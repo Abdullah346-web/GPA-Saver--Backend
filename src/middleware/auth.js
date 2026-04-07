@@ -1,7 +1,8 @@
 const jwt = require('jsonwebtoken');
+const User = require('../models/User');
 
-// Middleware to verify JWT token
-const authenticate = (req, res, next) => {
+// Middleware to verify JWT token and validate single-device login
+const authenticate = async (req, res, next) => {
   try {
     // Get token from header
     const token = req.headers.authorization?.split(' ')[1];
@@ -17,6 +18,26 @@ const authenticate = (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.userId = decoded.userId;
     req.userRole = decoded.role;
+
+    // Single-device login: Fetch user and compare token
+    if (req.userId !== 'fallback-admin') {
+      const user = await User.findById(req.userId);
+
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: 'User not found',
+        });
+      }
+
+      // Check if the incoming token matches the stored current token
+      if (user.currentToken !== token) {
+        return res.status(401).json({
+          success: false,
+          message: 'Logged in from another device',
+        });
+      }
+    }
 
     next();
   } catch (error) {

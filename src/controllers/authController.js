@@ -84,32 +84,13 @@ const login = async (req, res) => {
       });
     }
 
-    // Check if user is already logged in from another device
-    if (user.activeSessionToken) {
-      // Check if the previous session is stale (>30 minutes old)
-      const sessionAgeMs = new Date() - new Date(user.activeSessionTokenTime);
-      const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-
-      if (sessionAgeMs < SESSION_TIMEOUT_MS) {
-        // Session is fresh - reject login
-        return res.status(409).json({
-          success: false,
-          message: 'This account is already in use on another device. Please logout from the other device first.',
-        });
-      } else {
-        // Session is stale - auto clear it and allow login
-        user.activeSessionToken = null;
-        user.activeSessionTokenTime = null;
-      }
-    }
-
     // Generate token
     const token = generateToken(user._id, user.role);
 
+    // Single-device login: Save the new token, invalidating any previous sessions
     user.isOnline = true;
     user.lastLoginAt = new Date();
-    user.activeSessionToken = token;
-    user.activeSessionTokenTime = new Date();
+    user.currentToken = token;
     await user.save();
 
     res.status(200).json({
@@ -137,10 +118,10 @@ const login = async (req, res) => {
 const logout = async (req, res) => {
   try {
     if (req.userId && req.userId !== 'fallback-admin') {
+      // Single-device login: Clear the current token on logout
       await User.findByIdAndUpdate(req.userId, {
         isOnline: false,
-        activeSessionToken: null,
-        activeSessionTokenTime: null,
+        currentToken: null,
       });
     }
 
@@ -328,66 +309,10 @@ const createUser = async (req, res) => {
   }
 };
 
-// Force Logout All Devices (when stuck)
-const forceLogoutAll = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    const identifier = String(email || '').trim().toLowerCase();
-
-    // Validation
-    if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide email and password',
-      });
-    }
-
-    // Find user with password field
-    const user = await User.findOne({
-      $or: [{ email: identifier }, { username: identifier }],
-    }).select('+password');
-
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid credentials',
-      });
-    }
-
-    // Compare passwords
-    const isPasswordCorrect = await user.comparePassword(password);
-
-    if (!isPasswordCorrect) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid credentials',
-      });
-    }
-
-    // Clear all sessions
-    user.activeSessionToken = null;
-    user.activeSessionTokenTime = null;
-    user.isOnline = false;
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'All sessions cleared successfully. You can now login.',
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Server error',
-      error: error.message,
-    });
-  }
-};
-
 module.exports = {
   login,
   logout,
   registerUser,
   createUser,
-  forceLogoutAll,
   generateToken,
 };

@@ -45,12 +45,9 @@ const userSchema = new mongoose.Schema(
     lastLoginAt: {
       type: Date,
     },
-    activeSessionToken: {
+    // Single-device login: stores the current active JWT token
+    currentToken: {
       type: String,
-      default: null,
-    },
-    activeSessionTokenTime: {
-      type: Date,
       default: null,
     },
   },

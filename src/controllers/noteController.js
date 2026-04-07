@@ -1,5 +1,4 @@
 const Note = require('../models/Note');
-const Notification = require('../models/Notification');
 const fs = require('fs');
 const path = require('path');
 
@@ -123,7 +122,6 @@ const uploadNote = async (req, res) => {
 const deleteNote = async (req, res) => {
   try {
     const { noteId } = req.params;
-    const { reason } = req.body;
 
     const note = await Note.findById(noteId);
 
@@ -142,39 +140,14 @@ const deleteNote = async (req, res) => {
       });
     }
 
-    // If admin is deleting, reason is required
-    if (req.userRole === 'admin' && note.uploadedBy.toString() !== req.userId.toString()) {
-      if (!reason || String(reason).trim().length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Please provide a reason for deleting this note',
-        });
-      }
-    }
-
     // Delete file from server
     const filePath = path.join(__dirname, '../../uploads', note.pdfFileName);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
     }
 
-    const noteTitle = note.title || 'Untitled Note';
-    const uploadedById = note.uploadedBy.toString();
-
     // Delete note from database
     await Note.findByIdAndDelete(noteId);
-
-    // If admin deleted user's note, create notification
-    if (req.userRole === 'admin' && uploadedById !== req.userId.toString()) {
-      await Notification.create({
-        userId: uploadedById,
-        type: 'note_deleted',
-        title: 'Note Deleted by Admin',
-        message: `Your note "${noteTitle}" has been deleted by admin.`,
-        reason: String(reason || '').trim() || null,
-        relatedNote: noteId,
-      });
-    }
 
     res.status(200).json({
       success: true,
