@@ -76,9 +76,8 @@ const uploadNote = async (req, res) => {
       });
     }
 
-    // Get logged in user from token
-    const User = require('../models/User');
-    const user = await User.findById(req.userId);
+    // Reuse the authenticated user from middleware to avoid an extra DB query.
+    const user = req.authUser || null;
 
     if (!user) {
       return res.status(404).json({
@@ -142,8 +141,12 @@ const deleteNote = async (req, res) => {
 
     // Delete file from server
     const filePath = path.join(__dirname, '../../uploads', note.pdfFileName);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    try {
+      await fs.promises.unlink(filePath);
+    } catch (unlinkError) {
+      if (unlinkError.code !== 'ENOENT') {
+        throw unlinkError;
+      }
     }
 
     // Delete note from database

@@ -88,10 +88,16 @@ const login = async (req, res) => {
     const token = generateToken(user._id, user.role);
 
     // Single-device login: Save the new token, invalidating any previous sessions
-    user.isOnline = true;
-    user.lastLoginAt = new Date();
-    user.currentToken = token;
-    await user.save();
+    await User.updateOne(
+      { _id: user._id },
+      {
+        $set: {
+          isOnline: true,
+          lastLoginAt: new Date(),
+          currentToken: token,
+        },
+      }
+    );
 
     res.status(200).json({
       success: true,
@@ -119,10 +125,15 @@ const logout = async (req, res) => {
   try {
     if (req.userId && req.userId !== 'fallback-admin') {
       // Single-device login: Clear the current token on logout
-      await User.findByIdAndUpdate(req.userId, {
-        isOnline: false,
-        currentToken: null,
-      });
+      await User.updateOne(
+        { _id: req.userId },
+        {
+          $set: {
+            isOnline: false,
+            currentToken: null,
+          },
+        }
+      );
     }
 
     return res.status(200).json({

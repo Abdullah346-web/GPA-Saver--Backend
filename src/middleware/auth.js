@@ -21,7 +21,9 @@ const authenticate = async (req, res, next) => {
 
     // Single-device login: Fetch user and compare token
     if (req.userId !== 'fallback-admin') {
-      const user = await User.findById(req.userId);
+      const user = await User.findById(req.userId)
+        .select('name username email role isActive currentToken')
+        .lean();
 
       if (!user) {
         return res.status(401).json({
@@ -30,13 +32,30 @@ const authenticate = async (req, res, next) => {
         });
       }
 
+      req.authUser = user;
+
       // Check if the incoming token matches the stored current token
+      if (!user.isActive) {
+        return res.status(401).json({
+          success: false,
+          message: 'User account is deactivated',
+        });
+      }
+
       if (user.currentToken !== token) {
         return res.status(401).json({
           success: false,
           message: 'Logged in from another device',
         });
       }
+    } else {
+      req.authUser = {
+        _id: 'fallback-admin',
+        name: 'Admin',
+        username: 'admin',
+        email: 'admin123@gmail.com',
+        role: 'admin',
+      };
     }
 
     next();
