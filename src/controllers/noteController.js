@@ -72,7 +72,7 @@ const uploadNote = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: 'PDF file is required',
+        message: 'PDF or Word file is required',
       });
     }
 

@@ -13,6 +13,29 @@ const { authenticate, adminOnly } = require('../middleware/auth');
 
 const router = express.Router();
 
+const ALLOWED_NOTE_EXTENSIONS = new Set([
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.docm',
+  '.dot',
+  '.dotx',
+  '.rtf',
+  '.odt',
+]);
+
+const ALLOWED_NOTE_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-word.document.macroEnabled.12',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.template',
+  'application/vnd.ms-word.template.macroEnabled.12',
+  'application/rtf',
+  'text/rtf',
+  'application/vnd.oasis.opendocument.text',
+]);
+
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -20,7 +43,8 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + '.pdf');
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    cb(null, file.fieldname + '-' + uniqueSuffix + (ext || '.pdf'));
   },
 });
 
@@ -30,10 +54,14 @@ const upload = multer({
     fileSize: 50 * 1024 * 1024, // 50MB limit
   },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype === 'application/pdf') {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    const isAllowedMime = ALLOWED_NOTE_MIME_TYPES.has(String(file.mimetype || '').toLowerCase());
+    const isAllowedExt = ALLOWED_NOTE_EXTENSIONS.has(ext);
+
+    if (isAllowedMime || isAllowedExt) {
       cb(null, true);
     } else {
-      cb(new Error('Only PDF files are allowed'));
+      cb(new Error('Only PDF and Word files are allowed'));
     }
   },
 });
