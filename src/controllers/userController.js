@@ -1,9 +1,33 @@
 const User = require('../models/User');
 
+const ONLINE_USER_TTL_MS = Math.max(
+  Number(process.env.ONLINE_USER_TTL_SECONDS || 90) * 1000,
+  30 * 1000
+);
+
+const markStaleUsersOffline = async () => {
+  const cutoff = new Date(Date.now() - ONLINE_USER_TTL_MS);
+  await User.updateMany(
+    {
+      role: 'user',
+      isOnline: true,
+      $or: [{ lastSeenAt: { $exists: false } }, { lastSeenAt: { $lt: cutoff } }],
+    },
+    {
+      $set: {
+        isOnline: false,
+        currentToken: null,
+      },
+    }
+  );
+  return cutoff;
+};
+
 // Get all users (Admin)
 const getAllUsers = async (req, res) => {
   try {
     const { search } = req.query;
+    const onlineCutoff = await markStaleUsersOffline();
 
     let query = { role: 'user' };
     if (search) {
@@ -21,10 +45,21 @@ const getAllUsers = async (req, res) => {
       .select('-password')
       .sort({ createdAt: -1 });
 
+    const normalizedUsers = users.map((userDoc) => {
+      const userObj = userDoc.toObject();
+      const isRecentlySeen =
+        Boolean(userObj.lastSeenAt) && new Date(userObj.lastSeenAt).getTime() >= onlineCutoff.getTime();
+
+      return {
+        ...userObj,
+        isOnline: Boolean(userObj.isOnline) && isRecentlySeen,
+      };
+    });
+
     res.status(200).json({
       success: true,
-      count: users.length,
-      users,
+      count: normalizedUsers.length,
+      users: normalizedUsers,
     });
   } catch (error) {
     res.status(500).json({
@@ -38,8 +73,13 @@ const getAllUsers = async (req, res) => {
 // Get user statistics
 const getUserStats = async (req, res) => {
   try {
+    const onlineCutoff = await markStaleUsersOffline();
     const totalUsers = await User.countDocuments({ role: 'user' });
-    const activeUsers = await User.countDocuments({ role: 'user', isOnline: true });
+    const activeUsers = await User.countDocuments({
+      role: 'user',
+      isOnline: true,
+      lastSeenAt: { $gte: onlineCutoff },
+    });
 
     res.status(200).json({
       success: true,

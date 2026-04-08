@@ -94,6 +94,7 @@ const login = async (req, res) => {
         $set: {
           isOnline: true,
           lastLoginAt: new Date(),
+          lastSeenAt: new Date(),
           currentToken: token,
         },
       }
@@ -130,6 +131,7 @@ const logout = async (req, res) => {
         {
           $set: {
             isOnline: false,
+            lastSeenAt: new Date(),
             currentToken: null,
           },
         }
@@ -139,6 +141,86 @@ const logout = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: 'Logout successful',
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message,
+    });
+  }
+};
+
+// Presence heartbeat (keeps currently active users online)
+const heartbeat = async (req, res) => {
+  try {
+    if (req.userId && req.userId !== 'fallback-admin') {
+      await User.updateOne(
+        { _id: req.userId },
+        {
+          $set: {
+            isOnline: true,
+            lastSeenAt: new Date(),
+          },
+        }
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Heartbeat received',
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Server error',
+      error: error.message,
+    });
+  }
+};
+
+// Leave signal endpoint for page close/tab close without explicit logout
+const leave = async (req, res) => {
+  try {
+    const rawToken = String(req.body?.token || '').trim();
+    if (!rawToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token is required',
+      });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(rawToken, process.env.JWT_SECRET);
+    } catch {
+      return res.status(200).json({
+        success: true,
+        message: 'Ignored invalid token',
+      });
+    }
+
+    if (!decoded?.userId || decoded.userId === 'fallback-admin') {
+      return res.status(200).json({
+        success: true,
+        message: 'No-op for this user',
+      });
+    }
+
+    await User.updateOne(
+      { _id: decoded.userId, currentToken: rawToken },
+      {
+        $set: {
+          isOnline: false,
+          lastSeenAt: new Date(),
+          currentToken: null,
+        },
+      }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'User marked offline',
     });
   } catch (error) {
     return res.status(500).json({
@@ -323,6 +405,8 @@ const createUser = async (req, res) => {
 module.exports = {
   login,
   logout,
+  heartbeat,
+  leave,
   registerUser,
   createUser,
   generateToken,
